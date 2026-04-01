@@ -20,8 +20,7 @@
 
 import helmet from 'helmet';
 import cors, { CorsOptions } from 'cors';
-import mongoSanitize from 'express-mongo-sanitize';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { env } from '../config/env';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,14 +159,38 @@ export function configureCors() {
  * MongoDB evaluates "$gt": "" as "greater than empty string" — true for every
  * document — so the query returns the first user in the DB. Instant auth bypass.
  *
- * express-mongo-sanitize strips any key that starts with "$" or contains "."
- * from req.body, req.query, and req.params before the request reaches a route.
+ * Keys starting with "$" or containing "." are dropped from req.body,
+ * req.params, and req.query before the request reaches a route.
  *
- * replaceWith: "_" — instead of deleting the key (which would silently corrupt
- * data), replace the dangerous character so it's still visible in logs.
+ * NOTE: express-mongo-sanitize is incompatible with Express 5 because it tries
+ * to reassign req.query, which is a read-only getter in Express 5. This custom
+ * implementation mutates the existing objects in-place instead.
  */
-export function configureMongoSanitize() {
-  return mongoSanitize({ replaceWith: '_' });
+function stripMongoOperators(obj: Record<string, unknown>): void {
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith('$') || key.includes('.')) {
+      delete obj[key];
+    } else if (obj[key] !== null && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+      stripMongoOperators(obj[key] as Record<string, unknown>);
+    }
+  }
+}
+
+export function configureMongoSanitize(): RequestHandler {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (req.body !== null && typeof req.body === 'object') {
+      stripMongoOperators(req.body as Record<string, unknown>);
+    }
+    if (req.params && typeof req.params === 'object') {
+      stripMongoOperators(req.params as unknown as Record<string, unknown>);
+    }
+    // req.query cannot be reassigned in Express 5 (read-only getter),
+    // but the object itself is mutable — delete dangerous keys in-place.
+    if (req.query && typeof req.query === 'object') {
+      stripMongoOperators(req.query as Record<string, unknown>);
+    }
+    next();
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

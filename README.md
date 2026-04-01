@@ -14,7 +14,7 @@ Production-grade REST API for the MomKidCare platform, built with **Node.js + Ex
 | Database | MongoDB (native driver) | ^7.1 |
 | Security | Helmet | ^8.1 |
 | CORS | cors | ^2.x |
-| NoSQL injection | express-mongo-sanitize | ^2.x |
+| NoSQL injection | Custom middleware (Express 5 compatible) | — |
 | Rate limiting | express-rate-limit | ^8.3 |
 | File uploads | Multer | ^2.1 |
 | Logging | Pino | ^9.x |
@@ -43,7 +43,7 @@ src/
 │   ├── notFound.ts        ← 404 catch-all (registered after all routers)
 │   ├── rateLimiter.ts     ← globalRateLimiter (100/15min) + authRateLimiter (10/15min)
 │   ├── requestLogger.ts   ← pino-http request/response logger + requestId injection
-│   └── security.ts        ← configureHelmet, configureCors, mongoSanitize, sanitizeBody
+│   └── security.ts        ← configureHelmet, configureCors, configureMongoSanitize, sanitizeBody
 ├── utils/
 │   ├── ApiError.ts        ← Custom operational error class with statusCode
 │   ├── ApiResponse.ts     ← Standard { success, message, data, meta } envelope
@@ -145,7 +145,7 @@ Base URL: `/api/v1`
 - **Pino-pretty dev-only** — `pino-pretty` is a `devDependency` only. It runs in a worker thread (no blocking) in development. Production emits raw newline-delimited JSON straight to stdout for ingestion by the container log driver or log shipper.
 - **CORS allowlist, never wildcard** — `"*"` is incompatible with `credentials: true`. Named origins are required to allow cookies and Authorization headers. Server-to-server calls (no `Origin` header) are always permitted.
 - **`configureCors` before `configureHelmet`** — OPTIONS preflight requests must receive CORS headers before any other middleware can reject them. If Helmet ran first and set a restrictive CSP before CORS approved the origin, preflights would fail silently.
-- **express-mongo-sanitize after body parsing** — Strips `$` and `.` characters from `req.body` keys before they reach any service or DB query. Without it, `{ "email": { "$gt": "" } }` bypasses login — MongoDB evaluates it as "greater than empty string", matching every user.
+- **Custom mongo sanitizer after body parsing** — Strips `$` and `.` characters from `req.body`, `req.params`, and `req.query` keys in-place before they reach any service or DB query. Without it, `{ "email": { "$gt": "" } }` bypasses login — MongoDB evaluates it as "greater than empty string", matching every user. `express-mongo-sanitize` was removed because it reassigns `req.query`, which is a read-only getter in Express 5.
 - **sanitizeBody after mongo-sanitize** — Encodes `<` and `>` in string values and drops `__proto__`/`constructor`/`prototype` keys. Prevents stored XSS (injected `<script>` tags saved to DB and rendered elsewhere) and prototype-pollution attacks that can silently corrupt `Object.prototype` app-wide.
 - **Helmet CSP over a separate XSS library** — Content Security Policy in Helmet tells the browser to refuse executing inline scripts from unknown origins. This is the correct, standards-based XSS defence — not a regex scrubber. The `sanitizeBody` middleware is an additional depth-of-defence to protect against stored XSS in non-browser consumers (mobile apps, server-side rendering).
 
@@ -240,7 +240,7 @@ export async function createBooking(req: Request, res: Response) {
 |---|---|---|
 | `helmet()` with defaults | `configureHelmet()` with explicit CSP + HSTS | Default helmet omits a hard Content Security Policy; defaults are a starting point, not a production config |
 | No CORS config | `configureCors()` with origin allowlist | Without CORS, any website can make credentialed requests to your API from a victim's browser |
-| No input sanitization | `configureMongoSanitize()` | `{ "email": { "$gt": "" } }` in body bypasses MongoDB auth queries entirely |
+| No input sanitization | `configureMongoSanitize()` | `{ "email": { "$gt": "" } }` in body bypasses MongoDB auth queries entirely — custom impl required for Express 5 compatibility |
 | No body key filtering | `sanitizeBody()` | Stored `<script>` tags and `__proto__` keys are silent time-bombs |
 
 **Attack scenarios blocked:**
@@ -251,9 +251,10 @@ export async function createBooking(req: Request, res: Response) {
 | Clickjacking | Wrap app in iframe, trick clicks | Helmet `frameguard: deny` |
 | SSL strip / MITM | Downgrade HTTPS → HTTP | Helmet HSTS 1-year |
 | MIME sniff | Upload `.jpg` containing JS, browser executes | Helmet `noSniff` |
-| NoSQL injection | `{ "$gt": "" }` auth bypass | express-mongo-sanitize |
+| NoSQL injection | `{ "$gt": "" }` auth bypass | configureMongoSanitize (custom) |
 | Prototype pollution | `{ "__proto__": { "isAdmin": true } }` | sanitizeBody key filter |
 | Cross-origin request forgery (basic) | malicious.com calls API with victim's cookies | CORS origin allowlist |
 | Fingerprinting / bot scanning | `X-Powered-By: Express` reveals tech stack | Helmet `hidePoweredBy` |
-#   t s - b a c k e n d - s t a r t e r  
+#   t s - b a c k e n d - s t a r t e r 
+ 
  
