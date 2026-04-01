@@ -1,0 +1,19 @@
+# --- Dependencies ---
+node_modules/
+
+# --- Build output ---
+dist/
+
+# --- Environment secrets (NEVER commit this) ---
+.env
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS artifacts ---
+.DS_Store
+Thumbs.db
+
+# --- IDE ---
+.vscode/settings.json
