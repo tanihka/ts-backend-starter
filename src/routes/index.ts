@@ -8,6 +8,7 @@
  * the full API surface at a glance.
  */
 import { Router } from 'express';
+import vendorAuthRouter from '../features/vendor-auth/vendor-auth.routes';
 
 const router = Router();
 
@@ -22,11 +23,11 @@ router.get('/health', (_req, res) => {
 });
 
 // ── Feature routers (mount as you build each feature) ────────────────────────
-// import { authRouter }  from '../features/auth/auth.routes';
+router.use('/vendor/auth', vendorAuthRouter);
+
 // import { consumerRouter }  from '../features/users/consumer.routes';
 // import { providerRouter } from '../features/nannies/provider.routes';
 //
-// router.use('/auth',    authRouter);
 // router.use('/consumers',   consumerRouter);
 // router.use('/providers', providerRouter);
 

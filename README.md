@@ -11,8 +11,8 @@ Production-grade REST API for the MomKidCare platform, built with **Node.js + Ex
 | Runtime | Node.js | ≥ 18 |
 | Framework | Express | ^5.2 |
 | Language | TypeScript | ^6.0 |
-| Database | MongoDB (native driver) | ^7.1 |
-| Security | Helmet | ^8.1 |
+| Database | MongoDB (native driver) | ^7.1 || ODM (legacy models) | Mongoose | ^8.23 |
+| Shared models | @momkidcare/shared-utils | ^1.1.16 || Security | Helmet | ^8.1 |
 | CORS | cors | ^2.x |
 | NoSQL injection | Custom middleware (Express 5 compatible) | — |
 | Rate limiting | express-rate-limit | ^8.3 |
@@ -29,11 +29,13 @@ Production-grade REST API for the MomKidCare platform, built with **Node.js + Ex
 
 ```
 src/
-├── server.ts              ← Entry point: DB connect → HTTP listen → graceful shutdown
+├── server.ts              ← Entry point: DB connect → Mongoose connect → HTTP listen → graceful shutdown
 ├── app.ts                 ← Express factory (importable in tests, no side effects)
 ├── config/
 │   ├── env.ts             ← Centralised env validation — crashes at boot if vars missing
-│   └── db.ts              ← MongoDB singleton: connectDB(), getDB(), closeDB()
+│   └── db.ts              ← MongoDB singleton: connectDB(), connectMongoose(), getDB(), closeDB()
+├── db/
+│   └── setupCollection.ts ← Creates collections with $jsonSchema validators + indexes at startup
 ├── controllers/           ← Thin request handlers (delegates to services)
 ├── services/              ← All business logic lives here
 ├── routes/
@@ -44,12 +46,15 @@ src/
 │   ├── rateLimiter.ts     ← globalRateLimiter (100/15min) + authRateLimiter (10/15min)
 │   ├── requestLogger.ts   ← pino-http request/response logger + requestId injection
 │   └── security.ts        ← configureHelmet, configureCors, configureMongoSanitize, sanitizeBody
+├── features/
+│   └── vendor-auth/       ← Vendor OTP sign-in (send OTP, verify OTP)
 ├── utils/
 │   ├── ApiError.ts        ← Custom operational error class with statusCode
 │   ├── ApiResponse.ts     ← Standard { success, message, data, meta } envelope
 │   └── logger.ts          ← Pino instance (JSON in prod, pretty in dev)
 └── types/
-    └── express.d.ts       ← Express Request augmentation (req.requestId, req.user, etc.)
+    ├── express.d.ts       ← Express Request augmentation (req.requestId, req.user, etc.)
+    └── shared-utils.d.ts  ← TypeScript declarations for @momkidcare/shared-utils (JS package)
 ```
 
 ---
@@ -80,6 +85,10 @@ NODE_ENV=development
 PORT=3000
 MONGODB_URI=mongodb://localhost:27017/app
 ALLOWED_ORIGINS=http://localhost:5173
+TWO_FACTOR_API_KEY=your_2factor_api_key
+TWO_FACTOR_SENDER_ID=your_sender_id
+TWO_FACTOR_TEMPLATE_NAME=your_template_name
+NPM_TOKEN=your_github_packages_token
 ```
 
 ### 3. Run in development (hot-reload)
@@ -128,6 +137,10 @@ Base URL: `/api/v1`
 | `PORT` | No | HTTP port (default: `3000`) |
 | `MONGODB_URI` | **Yes** | Full MongoDB connection string |
 | `ALLOWED_ORIGINS` | No | Comma-separated CORS origins (default: `http://localhost:5173`) |
+| `TWO_FACTOR_API_KEY` | **Yes** | 2Factor.in API key for transactional SMS |
+| `TWO_FACTOR_SENDER_ID` | **Yes** | Approved SMS sender ID |
+| `TWO_FACTOR_TEMPLATE_NAME` | **Yes** | Approved DLT template name |
+| `NPM_TOKEN` | **Yes** | GitHub Packages PAT with `read:packages` scope (for `@momkidcare/shared-utils`) |
 
 ---
 
@@ -136,6 +149,9 @@ Base URL: `/api/v1`
 - **`app.ts` vs `server.ts` split** — Express app is importable in tests without opening a socket or connecting to DB. `supertest(app)` works without `listen()` or a real MongoDB connection.
 - **Fail-fast env validation** — Missing required variables crash the process at startup with a clear message, not silently at runtime mid-request.
 - **MongoDB singleton** — `MongoClient` manages an internal connection pool; multiple clients would waste connections.
+- **Dual DB connections (native driver + Mongoose)** — The native MongoDB driver is used for all new features. Mongoose is connected separately solely to power the `@momkidcare/shared-utils` legacy JS models (e.g. `VendorForm`). Both target the same database; no data is duplicated.
+- **`@momkidcare/shared-utils` — no rewrite needed** — The package's plain-JS Mongoose models are consumed directly. TypeScript declarations are hand-written in `src/types/shared-utils.d.ts`, covering only the fields actually used. This avoids rewriting stable production models while gaining type safety at the call sites.
+- **MongoDB `$jsonSchema` validation over Mongoose schemas for new collections** — New collections (e.g. `vendorSignInOtp`) use MongoDB's built-in JSON schema validation, enforced server-side on every write. TTL indexes on `expiryAt` let MongoDB auto-purge expired documents without cron jobs or manual cleanup code.
 - **`ApiError.isOperational`** — Distinguishes expected errors (send message to client) from bugs (log full stack + hide message in production).
 - **Standard response envelope** — `{ success, message, data, meta }` lets clients write one generic handler for every endpoint.
 - **Two rate limiters** — Auth routes get a stricter limit (10 req / 15 min) to prevent brute-force attacks.
@@ -159,11 +175,13 @@ Base URL: `/api/v1`
 | 2 | ✅ Done | Express server setup (app/server split, middleware pipeline, health check) |
 | 3 | ✅ Done | Production-grade logging (Pino, structured JSON, requestId, request lifecycle logs) |
 | 4 | ✅ Done | Security layer (Helmet CSP, CORS allowlist, NoSQL injection, XSS, prototype pollution) |
-| 5 | 🔜 Next | Authentication (register, login, JWT) |
-| 6 | — | Consumer & provider profiles |
-| 7 | — | Booking system |
-| 8 | — | File uploads (profile photos) |
-| 9 | — | Notifications |
+| 5 | ✅ Done | Vendor OTP auth — send + verify via 2Factor SMS; `vendorSignInOtp` collection with `$jsonSchema` + TTL index |
+| 6 | ✅ Done | Shared-utils integration — Mongoose connected for legacy JS models; `VendorForm` used for vendor lookup |
+| 7 | 🔜 Next | JWT issuance + auth middleware (protect routes after OTP verify) |
+| 8 | — | Consumer & provider profiles |
+| 9 | — | Booking system |
+| 10 | — | File uploads (profile photos) |
+| 11 | — | Notifications |
 
 ### Step 2 — Express Server Setup
 
@@ -226,6 +244,52 @@ export async function createBooking(req: Request, res: Response) {
   res.setHeader('X-Request-ID', requestId); // return to client for support tickets
   await bookingService.create(data, { requestId }); // forward to downstream
 }
+```
+
+### Step 5 — Vendor OTP Authentication
+
+**What was added:**
+- `src/features/vendor-auth/vendor-auth.service.ts` — `sendVendorOtp()` and `verifyVendorOtp()`
+- `src/features/vendor-auth/vendor-auth.controller.ts` — thin HTTP handlers
+- `src/features/vendor-auth/vendor-auth.routes.ts` — mounted at `/api/v1/vendor/auth`
+- `src/features/vendor-auth/vendor-auth.types.ts` — `VendorOtpRecord` interface
+
+**Flow:**
+```
+POST /api/v1/vendor/auth/send-otp
+  → validate mobile exists in vendors collection (via VendorForm model)
+  → generate 6-digit OTP
+  → send via 2Factor Transactional SMS
+  → upsert { mobile, otp, createdAt, expiryAt } into vendorSignInOtp
+
+POST /api/v1/vendor/auth/verify-otp
+  → find OTP record by mobile
+  → check expiryAt < now  (expired → 400)
+  → check otp matches     (wrong → 400)
+  → deleteOne (single-use)
+```
+
+**`vendorSignInOtp` collection setup (`src/db/setupCollection.ts`):**
+- `$jsonSchema` validator — requires `mobile`, `otp`, `createdAt`, `expiryAt` (all typed)
+- TTL index on `expiryAt` with `expireAfterSeconds: 0` — MongoDB auto-deletes documents once `expiryAt` is reached, no cron job needed
+
+### Step 6 — @momkidcare/shared-utils Integration
+
+**What was added:**
+- `mongoose` added as an explicit dependency (was a transitive dep of the package)
+- `connectMongoose()` in `src/config/db.ts` — Mongoose connects to the same `MONGODB_URI` at startup
+- `src/types/shared-utils.d.ts` — hand-written `.d.ts` declarations for the package's JS models
+- `NPM_TOKEN` env var + `.npmrc` with `${NPM_TOKEN}` pattern (never hardcode the token)
+
+**Why two DB connections:**
+- Native driver (`MongoClient`) → used by all new features; lower overhead, full control
+- Mongoose → connected only to make the legacy `@momkidcare/shared-utils` models work
+- Both point to the same database; Mongoose adds no data duplication
+
+**Adding more models from the package:**
+When you import a new model (e.g. `User`, `ServiceOrder`) add its interface to `src/types/shared-utils.d.ts`:
+```typescript
+export const User: Model<IUser>;
 ```
 
 ### Step 4 — Security Layer

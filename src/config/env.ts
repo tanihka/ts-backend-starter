@@ -39,4 +39,11 @@ export const env = {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),
+
+  // 2Factor SMS — used for OTP delivery.
+  // Sign up at https://2factor.in to get your API key.
+  TWO_FACTOR_API_KEY: requireEnv('TWO_FACTOR_API_KEY'),
+  TWO_FACTOR_SENDER_ID: process.env['TWO_FACTOR_SENDER_ID'] ?? 'INSUGX',
+  TWO_FACTOR_TEMPLATE_NAME: process.env['TWO_FACTOR_TEMPLATE_NAME'] ?? 'OTP_INSUGX',
+  GITHUB_NPM_TOKEN: requireEnv('GITHUB_NPM_TOKEN'),
 } as const;
