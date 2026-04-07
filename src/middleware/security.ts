@@ -49,7 +49,7 @@ import { env } from '../config/env';
  * hsts (HTTP Strict Transport Security)
  *   Attack: SSL-strip — attacker MITM downgrades you from HTTPS to HTTP.
  *   Defence: Browser remembers "always use HTTPS for this domain" for 1 year.
- *   includeSubDomains: covers api.momkidcare.com, admin.momkidcare.com, etc.
+ *   includeSubDomains: covers api.myapp.com, admin.myapp.com, etc.
  *
  * noSniff (X-Content-Type-Options: nosniff)
  *   Attack: MIME-sniff — attacker uploads a file named "photo.jpg" that

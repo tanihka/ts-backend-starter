@@ -1,10 +1,7 @@
-import axios from 'axios';
-import { VendorForm } from '@momkidcare/shared-utils';
 import { getDB } from '../../config/db';
-import { env } from '../../config/env';
 import { ApiError } from '../../utils/ApiError';
 import { logger } from '../../utils/logger';
-import type { VendorOtpRecord } from './vendor-auth.types';
+import type { Vendor, VendorOtpRecord } from './vendor-auth.types';
 
 const OTP_COLLECTION = 'vendorSignInOtp';
 const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
@@ -17,7 +14,9 @@ export async function sendVendorOtp(mobile: string): Promise<void> {
   const db = getDB();
 
   // 1. Confirm the mobile belongs to a registered vendor.
-  const vendor = await VendorForm.findOne({ 'personalInformation.mobile': mobile});
+  const vendor = await db
+    .collection<Vendor>('vendors')
+    .findOne({ 'personalInformation.mobile': mobile });
 
   if (!vendor) {
     throw new ApiError(404, 'No vendor account found with this mobile number.');
@@ -26,23 +25,10 @@ export async function sendVendorOtp(mobile: string): Promise<void> {
   // 2. Generate a 6-digit OTP.
   const otp = String(Math.floor(100000 + Math.random() * 900000));
 
-  // 3. Deliver via 2Factor Transactional SMS.
-  const formData = new FormData();
-  formData.append('From', env.TWO_FACTOR_SENDER_ID);
-  formData.append('To', mobile);
-  formData.append('TemplateName', env.TWO_FACTOR_TEMPLATE_NAME);
-  formData.append('VAR1', otp);
+  // TODO: integrate an SMS provider to deliver the OTP.
+  logger.info({ mobile, otp }, 'OTP generated (SMS delivery not configured)');
 
-  const url = `https://2factor.in/API/V1/${env.TWO_FACTOR_API_KEY}/ADDON_SERVICES/SEND/TSMS`;
-
-  const response = await axios.post<{ Status: string }>(url, formData);
-
-  if (response.data.Status !== 'Success') {
-    logger.error({ mobile, status: response.data.Status }, 'OTP delivery failed');
-    throw new ApiError(502, 'Failed to deliver OTP. Please try again.');
-  }
-
-  // 4. Upsert the OTP so any previous unsued OTP is overwritten.
+  // 3. Upsert the OTP so any previous unused OTP is overwritten.
   await db
     .collection<VendorOtpRecord>(OTP_COLLECTION)
     .updateOne(

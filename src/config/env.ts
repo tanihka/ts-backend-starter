@@ -32,7 +32,7 @@ export const env = {
   MONGODB_URI: requireEnv('MONGODB_URI'),
 
   // CORS — comma-separated list of allowed origins.
-  // Example: "https://momkidcare.com,https://app.momkidcare.com"
+  // Example: "https://myapp.com,https://app.myapp.com"
   // In development this defaults to localhost:5173 (Vite dev server).
   // NEVER set this to "*" in production — that disables Same-Origin protection.
   ALLOWED_ORIGINS: (process.env['ALLOWED_ORIGINS'] ?? 'http://localhost:5173')
@@ -40,10 +40,4 @@ export const env = {
     .map((o) => o.trim())
     .filter(Boolean),
 
-  // 2Factor SMS — used for OTP delivery.
-  // Sign up at https://2factor.in to get your API key.
-  TWO_FACTOR_API_KEY: requireEnv('TWO_FACTOR_API_KEY'),
-  TWO_FACTOR_SENDER_ID: process.env['TWO_FACTOR_SENDER_ID'] ?? 'INSUGX',
-  TWO_FACTOR_TEMPLATE_NAME: process.env['TWO_FACTOR_TEMPLATE_NAME'] ?? 'OTP_INSUGX',
-  GITHUB_NPM_TOKEN: requireEnv('GITHUB_NPM_TOKEN'),
 } as const;
