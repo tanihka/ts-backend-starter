@@ -1,6 +1,97 @@
-# App Backend
+# ts-backend-starter
 
-Production-grade REST API for the MomKidCare platform, built with **Node.js + Express + TypeScript + MongoDB**.
+A production-ready **Node.js + Express + TypeScript** backend starter with security, structured logging, and graceful shutdown built in.
+
+Use this as a base for any REST API project.
+
+---
+
+## Tech Stack
+
+| Concern | Library |
+|---|---|
+| Framework | Express 5 |
+| Language | TypeScript 6 |
+| Database | MongoDB (native driver) |
+| Security headers | Helmet |
+| CORS | cors |
+| Rate limiting | express-rate-limit |
+| Logging | Pino + pino-http |
+| Config | dotenv |
+| Dev server | Nodemon + ts-node |
+
+---
+
+## Project Structure
+
+```
+src/
+├── server.ts              ← Entry point: DB → HTTP listen → graceful shutdown
+├── app.ts                 ← Express factory (importable in tests, no side effects)
+├── config/
+│   ├── env.ts             ← Centralised env validation — crashes at boot if vars missing
+│   └── db.ts              ← MongoDB singleton: connectDB(), getDB(), closeDB()
+├── db/
+│   └── setupCollection.ts ← Creates collections with $jsonSchema validators + TTL indexes
+├── features/
+│   └── vendor-auth/       ← Example feature: OTP send + verify (controller/service/routes/types)
+├── middleware/
+│   ├── errorHandler.ts    ← Global 4-argument Express error handler
+│   ├── notFound.ts        ← 404 catch-all
+│   ├── rateLimiter.ts     ← Global (100/15 min) + auth-specific (10/15 min) limiters
+│   ├── requestLogger.ts   ← pino-http logger with per-request UUID injection
+│   └── security.ts        ← Helmet, CORS, NoSQL sanitization, XSS + prototype-pollution guard
+├── routes/
+│   └── index.ts           ← Root router mounted at /api/v1
+└── utils/
+    ├── ApiError.ts         ← Typed operational error class
+    ├── ApiResponse.ts      ← Consistent { success, message, data } response shape
+    └── logger.ts           ← Pino logger singleton
+```
+
+---
+
+## Getting Started
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and fill in MONGODB_URI
+
+# 3. Start dev server (auto-restarts on file changes)
+npm run dev
+
+# 4. Type check
+npm run type-check
+
+# 5. Build for production
+npm run build
+npm start
+```
+
+---
+
+## Middleware Pipeline
+
+Order is intentional — each layer protects the next:
+
+```
+CORS → Helmet → Request Logger → Rate Limiter → Body Parser →
+NoSQL Sanitize → XSS Sanitize → Routes → 404 → Error Handler
+```
+
+---
+
+## Key Design Decisions
+
+- **`app.ts` vs `server.ts`** — Express app is importable without starting a real server, making it test-friendly with supertest.
+- **Fail-fast env validation** — `requireEnv()` throws at startup, not mid-request, if a required variable is missing.
+- **Graceful shutdown** — handles `SIGTERM` (Docker/K8s) and `SIGINT` (Ctrl+C); closes HTTP server before DB connection.
+- **Structured logging** — every request gets a UUID; pino logs after the response finishes so status code and duration are always present.
+- **MongoDB TTL index** — OTP documents are auto-expired by the database, not application-level polling.
 
 ---
 

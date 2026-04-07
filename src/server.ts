@@ -10,7 +10,7 @@
  * Nothing else belongs here. Business logic lives in services/,
  * middleware lives in middleware/, routing lives in routes/.
  */
-import { connectDB, closeDB, connectMongoose } from './config/db';
+import { connectDB, closeDB } from './config/db';
 import { setupCollections } from './db/setupCollection';
 import { env } from './config/env';
 import { logger } from './utils/logger';
@@ -19,7 +19,6 @@ import app from './app';
 async function bootstrap(): Promise<void> {
   // 1. Database first — if this fails, no point starting the HTTP server.
   const db = await connectDB();
-  await connectMongoose();
   await setupCollections(db);
 
   // 2. Start listening.

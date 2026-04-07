@@ -26,7 +26,7 @@ export async function sendVendorOtp(mobile: string): Promise<void> {
   const otp = String(Math.floor(100000 + Math.random() * 900000));
 
   // TODO: integrate an SMS provider to deliver the OTP.
-  logger.info({ mobile, otp }, 'OTP generated (SMS delivery not configured)');
+  logger.info({ mobile }, 'OTP generated (SMS delivery not configured)');
 
   // 3. Upsert the OTP so any previous unused OTP is overwritten.
   await db

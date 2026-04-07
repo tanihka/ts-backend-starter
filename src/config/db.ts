@@ -6,7 +6,6 @@
  * across the entire application via getDB().
  */
 import { MongoClient, Db } from 'mongodb';
-import mongoose from 'mongoose';
 import { env } from './env';
 
 let client: MongoClient | null = null;
@@ -49,12 +48,4 @@ export async function closeDB(): Promise<void> {
     db = null;
     console.log('[DB] Connection closed');
   }
-  await mongoose.disconnect();
-  console.log('[Mongoose] Disconnected');
-}
-
-/** Connect Mongoose (used by legacy shared-utils models). */
-export async function connectMongoose(): Promise<void> {
-  await mongoose.connect(env.MONGODB_URI);
-  console.log('[Mongoose] Connected');
 }
